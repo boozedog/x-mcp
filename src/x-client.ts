@@ -7,6 +7,7 @@
  */
 import { Client, OAuth2, ApiError } from "@xdevplatform/xdk";
 import type { Auth } from "./auth-store.ts";
+import { Logger } from "./logger.ts";
 
 export class RateLimitError extends Error {
   readonly reset: number; // unix seconds
@@ -37,6 +38,7 @@ export class XClient {
   private auth: Auth;
   private readonly save: SaveFn;
   private readonly clientId: string;
+  private readonly logger: Logger;
   private client: Client;
   /** Refresh mutex: serializes refreshToken so concurrent callers share one refresh. */
   private refreshQueue: Promise<void> = Promise.resolve();
@@ -44,10 +46,11 @@ export class XClient {
   private gateRemaining: number | null = null;
   private gateReset: number | null = null; // unix seconds
 
-  constructor(auth: Auth, clientId: string, save: SaveFn) {
+  constructor(auth: Auth, clientId: string, save: SaveFn, logger?: Logger) {
     this.auth = auth;
     this.clientId = clientId;
     this.save = save;
+    this.logger = logger ?? new Logger();
     this.client = new Client({ accessToken: auth.access_token });
   }
 
@@ -66,6 +69,10 @@ export class XClient {
       });
       const token = await oauth.refreshToken();
       const nextExpiresAt = Math.floor(Date.now() / 1000) + Number(token.expires_in ?? 3600);
+      this.logger.info(
+        `token refreshed; expires in ${Number(token.expires_in ?? 3600)}s, ` +
+          `has_refresh_token=${!!token.refresh_token}`,
+      );
       this.auth = {
         access_token: token.access_token,
         refresh_token: token.refresh_token ?? this.auth.refresh_token,

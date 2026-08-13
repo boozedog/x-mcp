@@ -7,6 +7,7 @@ import { XClient } from "./x-client.ts";
 import { makeHandler } from "./server.ts";
 import { runLogin } from "./login.ts";
 import { pollBookmarks } from "./watcher.ts";
+import { Logger, parseLogLevel } from "./logger.ts";
 
 interface Opts {
   stateDir: string;
@@ -14,6 +15,7 @@ interface Opts {
   port: number;
   pollIntervalSec: number;
   loginPort: number;
+  logLevel: string;
 }
 
 function defaultStateDir(): string {
@@ -34,6 +36,7 @@ function parseArgs(): Opts {
     port: Number(flag("--port") ?? Deno.env.get("X_MCP_PORT") ?? "8788"),
     pollIntervalSec: Number(flag("--poll-interval") ?? Deno.env.get("X_MCP_POLL_INTERVAL") ?? "180"),
     loginPort: Number(flag("--login-port") ?? "8789"),
+    logLevel: flag("--log-level") ?? Deno.env.get("X_MCP_LOG_LEVEL") ?? "info",
   };
 }
 
@@ -73,9 +76,10 @@ async function main(): Promise<void> {
   const auth = await loadAuth(opts.stateDir);
   await Deno.mkdir(opts.stateDir, { recursive: true, mode: 0o700 });
   const store = new Store(`${opts.stateDir}/cache.sqlite`);
+  const log = new Logger(parseLogLevel(opts.logLevel));
   let client: XClient | null = null;
   if (auth) {
-    client = new XClient(auth, opts.clientId, (a) => saveAuth(opts.stateDir, a));
+    client = new XClient(auth, opts.clientId, (a) => saveAuth(opts.stateDir, a), log);
   } else {
     console.error(`warning: no auth file at ${authPath(opts.stateDir)}; run x-mcp login`);
   }
@@ -84,7 +88,7 @@ async function main(): Promise<void> {
   let lastNewCount = 0;
   let lastPollError: string | null = null;
 
-  const handler = client ? makeHandler(store, client) : null;
+  const handler = client ? makeHandler(store, client, log) : null;
 
   const health = (): Response => {
     const now = Math.floor(Date.now() / 1000);
@@ -105,10 +109,15 @@ async function main(): Promise<void> {
 
   Deno.serve({ hostname: "127.0.0.1", port: opts.port }, async (req) => {
     const url = new URL(req.url);
-    if (url.pathname === "/health") return health();
+    if (url.pathname === "/health") {
+      log.debug(`http ${req.method} ${url.pathname}`);
+      return health();
+    }
     if ((url.pathname === "/mcp" || url.pathname === "/mcp/") && handler) {
+      log.info(`http ${req.method} ${url.pathname}`);
       return handler.fetch(req);
     }
+    log.warn(`http ${req.method} ${url.pathname} -> 404`);
     return new Response("not found", { status: 404 });
   });
 
@@ -120,8 +129,10 @@ async function main(): Promise<void> {
       try {
         const me = await client.getMe();
         if (me.data?.id) store.setMeta("me_id", me.data.id);
+        log.info(`resolved me_id=${store.meta("me_id")}`);
       } catch (err) {
         lastPollError = err instanceof Error ? err.message : "could not resolve me_id";
+        log.warn(`could not resolve me_id: ${lastPollError}`);
       }
     }
     const tick = async (): Promise<void> => {
@@ -131,6 +142,10 @@ async function main(): Promise<void> {
       lastPollAt = new Date().toISOString();
       lastNewCount = res.newEdges;
       lastPollError = res.error ?? null;
+      log.info(
+        `poll fetched=${res.fetched} new=${res.newEdges} stopped=${res.stopped}` +
+          (res.error ? ` error=${res.error}` : ""),
+      );
     };
     const safeTick = async (): Promise<void> => {
       try {

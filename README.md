@@ -66,6 +66,7 @@ x-mcp refresh   # token health / force refresh (no secret values printed)
 - `--port <port>` (default `8788`)
 - `--poll-interval <sec>` (default `180`)
 - `--login-port <port>` (default `8789`)
+- `--log-level <debug|info|warn|error>` (default `info`; or `X_MCP_LOG_LEVEL`)
 
 ## Login
 
@@ -89,6 +90,10 @@ x-mcp refresh   # token health / force refresh (no secret values printed)
 It starts an in-process bookmark poller (`GET /2/users/{id}/bookmarks`, default
 folder only, no folder endpoints) sharing one refresh mutex and one rate-limit
 gate with the MCP tools.
+
+`serve` logs to stderr (token-free): HTTP requests, MCP tool calls, poller ticks,
+and token refreshes (structure only — never the tokens). Set `--log-level debug`
+for per-request `/health` lines.
 
 ## MCP tools (v1)
 

@@ -13,6 +13,7 @@ import { toMcpInputSchema, NoArgs } from "./mcp-schema.ts";
 import type { Store } from "./db.ts";
 import { RateLimitError, NotFoundError, type XClient } from "./x-client.ts";
 import { pollBookmarks } from "./watcher.ts";
+import { Logger } from "./logger.ts";
 
 /** Build an isError result carrying the rate-limit reset time. */
 function rateLimitedResult(reset: number): {
@@ -62,7 +63,8 @@ function cacheUser(store: Store, user: { id: string; username?: string } | undef
   if (user) store.upsertUser(user.id, user.username ?? "", user);
 }
 
-export function makeHandler(store: Store, client: XClient) {
+export function makeHandler(store: Store, client: XClient, logger?: Logger) {
+  const log = logger ?? new Logger();
   return createMcpHandler(() => {
     const server = new McpServer({ name: "x", version: "1.0.0" });
     server.registerTool(
@@ -72,6 +74,7 @@ export function makeHandler(store: Store, client: XClient) {
         inputSchema: toMcpInputSchema(NoArgs),
       },
       async () => {
+        log.info("tool get_me");
         try {
           const resp = await client.getMe();
           cacheUser(store, resp.data);
@@ -103,6 +106,7 @@ export function makeHandler(store: Store, client: XClient) {
           username?: string;
           fresh?: boolean;
         };
+        log.info(`tool get_user id=${id ?? "-"} username=${username ?? "-"} fresh=${!!fresh}`);
         if (!id && !username) throw new Error("get_user requires an id or username");
         if (!fresh) {
           const cached = id
@@ -151,6 +155,7 @@ export function makeHandler(store: Store, client: XClient) {
       },
       async (rawArgs: unknown) => {
         const { id, fresh } = (rawArgs ?? {}) as { id: string; fresh?: boolean };
+        log.info(`tool get_post id=${id} fresh=${!!fresh}`);
         if (!fresh) {
           const cached = store.post(id);
           if (cached) {
@@ -202,6 +207,7 @@ export function makeHandler(store: Store, client: XClient) {
       },
       async (rawArgs: unknown) => {
         const { limit } = (rawArgs ?? {}) as { limit?: number };
+        log.info(`tool list_bookmarks limit=${limit ?? 25}`);
         const items = store.bookmarks(limit ?? 25);
         return { content: [{ type: "text" as const, text: JSON.stringify(items) }] };
       },
@@ -214,6 +220,7 @@ export function makeHandler(store: Store, client: XClient) {
         inputSchema: toMcpInputSchema(NoArgs),
       },
       async () => {
+        log.info("tool refresh_bookmarks");
         const meId = store.meta("me_id");
         if (!meId) {
           const me = await client.getMe();
