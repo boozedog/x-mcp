@@ -1,0 +1,10 @@
+{
+  "tasks": { "check": "deno check src/main.ts", "test": "deno test -A src" },
+  "imports": {
+    "@std/assert": "jsr:@std/assert@^1.0.0",
+    "@modelcontextprotocol/server": "npm:@modelcontextprotocol/server@^2.0.0",
+    "@xdevplatform/xdk": "npm:@xdevplatform/xdk@^0.6.0",
+    "effect": "npm:effect@4.0.0-rc.108"
+  },
+  "minimumDependencyAge": 0
+}
