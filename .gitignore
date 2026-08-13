@@ -1,0 +1,24 @@
+# Local OAuth + corpus (never commit)
+auth.json
+*.sqlite
+*.sqlite-wal
+*.sqlite-shm
+/var/
+.state/
+
+# Deno
+/x-mcp
+/x-mcp.exe
+.deno/
+
+# Editor / OS
+.DS_Store
+.idea/
+.vscode/
+*.swp
+
+# Nix
+result
+result-*
+.direnv/
+*** End Patch ***
