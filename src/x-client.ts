@@ -189,7 +189,10 @@ export class XClient {
   ): Promise<GetBookmarksPage> {
     return this.gate((c) =>
       c.users.getBookmarks(userId, {
-        maxResults: 100,
+        // X Staff workaround for the bookmarks pagination bug: max_results=100
+        // can stop pagination early (~2-3 pages, next_token goes missing).
+        // 90 is the reported-safe value.
+        maxResults: 90,
         paginationToken,
         requestOptions: { raw: true },
       })
