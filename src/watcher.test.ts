@@ -49,3 +49,26 @@ Deno.test("poller: backfill mode pages past overlap to reach older bookmarks", a
   const ids = [...store.bookmarkIds()].sort();
   assertEquals(ids, ["new1", "new2", "old1", "p1"]);
 });
+
+Deno.test("poller: bookmark fetch stores complete long-form text", async () => {
+  const store = new Store(":memory:");
+  // The real XClient normalizes notePost.text into top-level text before the
+  // watcher caches it, so the fake client returns the already-normalized post.
+  const longClient = {
+    rate: { remaining: 50, reset: null },
+    async getBookmarksPage() {
+      return {
+        data: [{
+          id: "long1",
+          text: "the complete long-form text",
+          notePost: { text: "the complete long-form text" },
+        }],
+        meta: {},
+      };
+    },
+  } as never;
+  const res = await pollBookmarks(store, longClient as never, "me", { pageCap: 1 });
+  assertEquals(res.newEdges, 1);
+  const stored = store.post("long1");
+  assertEquals(JSON.parse(stored?.json ?? "{}").text, "the complete long-form text");
+});

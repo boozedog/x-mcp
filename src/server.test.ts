@@ -117,3 +117,26 @@ Deno.test("server: list_bookmarks sort=created orders by tweet created_at", asyn
   assertEquals(items[0].id, "new");
   assertEquals(items[1].id, "old");
 });
+
+Deno.test("server: get_post refresh replaces truncated text with complete text", async () => {
+  const store = new Store(":memory:");
+  // Existing cache holds the truncated top-level text.
+  store.upsertPost("1", { id: "1", text: "truncated..." });
+  // The real XClient normalizes notePost.text into top-level text before the
+  // server caches it, so the fake client returns the already-normalized post.
+  const client = {
+    rate: { remaining: 50, reset: null },
+    async getPost() {
+      return {
+        data: { id: "1", text: "the complete long-form text", notePost: { text: "the complete long-form text" } },
+      };
+    },
+  } as never;
+  const handler = makeHandler(store, client as never);
+  const msg = await callTool(handler, "get_post", { id: "1", fresh: true });
+  const returned = JSON.parse(msg?.result?.content?.[0]?.text ?? "{}") as { text: string };
+  assertEquals(returned.text, "the complete long-form text");
+  // The cache upsert must not regress to the truncated text.
+  const cached = JSON.parse(store.post("1")?.json ?? "{}") as { text: string };
+  assertEquals(cached.text, "the complete long-form text");
+});

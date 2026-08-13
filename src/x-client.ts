@@ -184,9 +184,15 @@ export class XClient {
   }
 
   async getPost(id: string): Promise<GetPostResponse> {
-    return this.gate((c) => c.posts.getById(id, { requestOptions: { raw: true } })).then(
-      (r) => this.parse(r as unknown as Response),
-    );
+    const resp = await this.gate((c) =>
+      c.posts.getById(id, {
+        postFields: [...POST_FIELDS],
+        requestOptions: { raw: true },
+      })
+    ).then((r) => this.parse<GetPostResponse>(r as unknown as Response));
+    if (resp.data) resp.data = normalizePost(resp.data);
+    if (resp.includes?.posts) resp.includes.posts = resp.includes.posts.map(normalizePost);
+    return resp;
   }
 
   /** Fetch one bookmark page (default folder only). No folder endpoints. */
@@ -205,7 +211,11 @@ export class XClient {
         expansions: [...POST_EXPANSIONS],
         requestOptions: { raw: true },
       })
-    ).then((r) => this.parse(r as unknown as Response));
+    ).then((r) => this.parse<GetBookmarksPage>(r as unknown as Response)).then((resp) => {
+      if (resp.data) resp.data = resp.data.map(normalizePost);
+      if (resp.includes?.posts) resp.includes.posts = resp.includes.posts.map(normalizePost);
+      return resp;
+    });
   }
 }
 
@@ -240,13 +250,21 @@ export interface XUser {
 export interface XPost {
   id: string;
   text?: string;
+  /** XDK v0.6.6 camelCase form of the X API `note_tweet` field (full long-form text). */
+  notePost?: { text?: string };
+  /** Raw snake_case form of the same field, as returned by `raw: true` responses. */
+  note_post?: { text?: string };
+  /** Legacy snake_case form of the same field, in case a response is not camelCased. */
+  note_tweet?: { text?: string };
   [k: string]: unknown;
 }
 
 /**
  * Curated tweet.fields for the bookmark poller. Skips private/elevated-access
  * fields (non_public_metrics, organic_metrics, promoted_metrics) and niche ones
- * (note_post, article, media_metadata, scopes, suggested_source_links*).
+ * (article, media_metadata, scopes, suggested_source_links*). `note_post` is the
+ * XDK v0.6.6 name for the X API `note_tweet` field, which carries the complete
+ * long-form post text (issue #3).
  */
 export const POST_FIELDS = [
   "created_at",
@@ -261,6 +279,7 @@ export const POST_FIELDS = [
   "context_annotations",
   "reply_settings",
   "withheld",
+  "note_post",
 ] as const;
 
 /** Curated user.fields for the bookmark poller (author expansions). */
@@ -279,3 +298,22 @@ export const USER_FIELDS = [
 
 /** Expansions so authors come back in the same response (no extra calls). */
 export const POST_EXPANSIONS = ["author_id"] as const;
+
+/**
+ * Promote the complete long-form text from a post's note field into its
+ * top-level `text`. The X API returns long-form posts with a truncated top-level
+ * `text` plus the full text in `note_tweet.text` (XDK v0.6.6: `notePost.text`).
+ * This normalizes so caching and returning preserve the complete text. Ordinary
+ * posts (no note field) are returned unchanged. Returns a shallow copy; never
+ * mutates the input.
+ */
+export function normalizePost<T extends XPost>(post: T): T {
+  // `raw: true` responses carry the snake_case field (`note_post`), so prefer
+  // it; fall back to the camelCase `notePost` and legacy `note_tweet` shapes.
+  const note = post.note_post ?? post.notePost ?? post.note_tweet;
+  const full = note?.text;
+  if (typeof full === "string" && full.length > 0) {
+    return { ...post, text: full };
+  }
+  return post;
+}
