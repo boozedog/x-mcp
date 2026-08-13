@@ -16,6 +16,8 @@ interface Opts {
   pollIntervalSec: number;
   loginPort: number;
   logLevel: string;
+  backfill: boolean;
+  backfillPages: number;
 }
 
 function defaultStateDir(): string {
@@ -37,6 +39,8 @@ function parseArgs(): Opts {
     pollIntervalSec: Number(flag("--poll-interval") ?? Deno.env.get("X_MCP_POLL_INTERVAL") ?? "180"),
     loginPort: Number(flag("--login-port") ?? "8789"),
     logLevel: flag("--log-level") ?? Deno.env.get("X_MCP_LOG_LEVEL") ?? "info",
+    backfill: Deno.args.includes("--backfill"),
+    backfillPages: Number(flag("--backfill-pages") ?? "50"),
   };
 }
 
@@ -133,6 +137,26 @@ async function main(): Promise<void> {
       } catch (err) {
         lastPollError = err instanceof Error ? err.message : "could not resolve me_id";
         log.warn(`could not resolve me_id: ${lastPollError}`);
+      }
+    }
+    // Optional deep backfill at startup: page all the way back past overlap to
+    // reach older bookmarks the steady-state poller would never fetch.
+    if (opts.backfill) {
+      const meId = store.meta("me_id");
+      if (meId) {
+        log.info(`backfill: paging up to ${opts.backfillPages} pages`);
+        const res = await pollBookmarks(store, client, meId, {
+          pageCap: opts.backfillPages,
+          backfill: true,
+          allowWhenRateLimited: true,
+        });
+        lastPollAt = new Date().toISOString();
+        lastNewCount = res.newEdges;
+        lastPollError = res.error ?? null;
+        log.info(
+          `backfill done fetched=${res.fetched} new=${res.newEdges} stopped=${res.stopped}` +
+            (res.error ? ` error=${res.error}` : ""),
+        );
       }
     }
     const tick = async (): Promise<void> => {

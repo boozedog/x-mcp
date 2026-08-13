@@ -32,3 +32,20 @@ Deno.test("poller: backfills until overlap, upserts edges, no folder calls", asy
   // No folder endpoints were called (only default bookmarks).
   assertEquals(calls.some((c) => c.includes("folder")), false);
 });
+
+Deno.test("poller: backfill mode pages past overlap to reach older bookmarks", async () => {
+  calls.length = 0;
+  const store = new Store(":memory:");
+  // Pre-seed the newest bookmark so page 1 overlaps immediately.
+  store.upsertBookmark("me", "new1", { id: "new1" });
+  const res = await pollBookmarks(store, client as never, "me", {
+    pageCap: 10,
+    backfill: true,
+  });
+  // In backfill mode we keep paging past the overlap on page 1; page 2 has no
+  // next_token so it exhausts.
+  assertEquals(res.stopped, "exhausted");
+  assertEquals(calls.length, 2); // page 1 + page 2 both fetched
+  const ids = [...store.bookmarkIds()].sort();
+  assertEquals(ids, ["new1", "new2", "old1", "p1"]);
+});

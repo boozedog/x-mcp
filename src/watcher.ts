@@ -36,7 +36,7 @@ export async function pollBookmarks(
   store: Store,
   client: XClient,
   userId: string,
-  opts: { pageCap?: number; allowWhenRateLimited?: boolean } = {},
+  opts: { pageCap?: number; allowWhenRateLimited?: boolean; backfill?: boolean } = {},
 ): Promise<PollResult> {
   // If the shared gate says we are out of quota and not yet reset, skip the tick.
   if (!opts.allowWhenRateLimited) {
@@ -90,7 +90,9 @@ export async function pollBookmarks(
     const next = resp.meta?.next_token ?? resp.meta?.nextToken;
     // Overlap = any post on this page was already known before this tick.
     const overlapped = posts.some((p) => knownBefore.has(p.id));
-    if (overlapped) return { fetched, newEdges, stopped: "overlap" };
+    // In steady state, stop at the first overlap (newest page is already known).
+    // In backfill mode, keep paging past overlap to reach older bookmarks.
+    if (overlapped && !opts.backfill) return { fetched, newEdges, stopped: "overlap" };
     if (!next) return { fetched, newEdges, stopped: "exhausted" };
     nextToken = next;
   }

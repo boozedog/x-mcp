@@ -67,6 +67,9 @@ x-mcp refresh   # token health / force refresh (no secret values printed)
 - `--poll-interval <sec>` (default `180`)
 - `--login-port <port>` (default `8789`)
 - `--log-level <debug|info|warn|error>` (default `info`; or `X_MCP_LOG_LEVEL`)
+- `--backfill` — deep backfill at startup: page all the way back past overlap to
+  reach older bookmarks the steady-state poller would never fetch
+- `--backfill-pages <n>` (default `50`) — max pages for a `--backfill` run
 
 ## Login
 
@@ -94,6 +97,14 @@ gate with the MCP tools.
 `serve` logs to stderr (token-free): HTTP requests, MCP tool calls, poller ticks,
 and token refreshes (structure only — never the tokens). Set `--log-level debug`
 for per-request `/health` lines.
+
+By default the poller only watches the **newest** page (steady state). If you have
+older bookmarks that predate the initial backfill, run once with `--backfill` to
+page all the way back and fill the corpus:
+
+```sh
+x-mcp serve --backfill
+```
 
 ## MCP tools (v1)
 
