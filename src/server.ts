@@ -56,6 +56,7 @@ const GetPostInput = Schema.Struct({
 
 const ListBookmarksInput = Schema.Struct({
   limit: Schema.optional(Schema.Number),
+  sort: Schema.optional(Schema.Literals(["created", "first_seen"])),
 });
 
 /** Upsert a user plus any included entities from a response. */
@@ -206,9 +207,12 @@ export function makeHandler(store: Store, client: XClient, logger?: Logger) {
         inputSchema: toMcpInputSchema(ListBookmarksInput),
       },
       async (rawArgs: unknown) => {
-        const { limit } = (rawArgs ?? {}) as { limit?: number };
-        log.info(`tool list_bookmarks limit=${limit ?? 25}`);
-        const items = store.bookmarks(limit ?? 25);
+        const { limit, sort } = (rawArgs ?? {}) as {
+          limit?: number;
+          sort?: "created" | "first_seen";
+        };
+        log.info(`tool list_bookmarks limit=${limit ?? 25} sort=${sort ?? "first_seen"}`);
+        const items = store.bookmarks(limit ?? 25, sort ?? "first_seen");
         return { content: [{ type: "text" as const, text: JSON.stringify(items) }] };
       },
     );

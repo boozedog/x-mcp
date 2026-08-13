@@ -196,11 +196,13 @@ export class XClient {
   ): Promise<GetBookmarksPage> {
     return this.gate((c) =>
       c.users.getBookmarks(userId, {
-        // X Staff workaround for the bookmarks pagination bug: max_results=100
-        // can stop pagination early (~2-3 pages, next_token goes missing).
-        // 90 is the reported-safe value.
-        maxResults: 90,
+        // Smaller pages: more reliable pagination (the max_results=100 early-stop
+        // bug) and smaller payloads now that we request rich fields.
+        maxResults: 50,
         paginationToken,
+        postFields: [...POST_FIELDS],
+        userFields: [...USER_FIELDS],
+        expansions: [...POST_EXPANSIONS],
         requestOptions: { raw: true },
       })
     ).then((r) => this.parse(r as unknown as Response));
@@ -240,3 +242,40 @@ export interface XPost {
   text?: string;
   [k: string]: unknown;
 }
+
+/**
+ * Curated tweet.fields for the bookmark poller. Skips private/elevated-access
+ * fields (non_public_metrics, organic_metrics, promoted_metrics) and niche ones
+ * (note_post, article, media_metadata, scopes, suggested_source_links*).
+ */
+export const POST_FIELDS = [
+  "created_at",
+  "public_metrics",
+  "entities",
+  "conversation_id",
+  "attachments",
+  "lang",
+  "source",
+  "possibly_sensitive",
+  "geo",
+  "context_annotations",
+  "reply_settings",
+  "withheld",
+] as const;
+
+/** Curated user.fields for the bookmark poller (author expansions). */
+export const USER_FIELDS = [
+  "created_at",
+  "description",
+  "public_metrics",
+  "profile_image_url",
+  "profile_banner_url",
+  "location",
+  "url",
+  "verified",
+  "protected",
+  "entities",
+] as const;
+
+/** Expansions so authors come back in the same response (no extra calls). */
+export const POST_EXPANSIONS = ["author_id"] as const;

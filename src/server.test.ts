@@ -106,3 +106,14 @@ Deno.test("server: tools/list exposes exactly the five v1 tools", async () => {
   const names = (JSON.parse(data ?? "{}")?.result?.tools ?? []).map((t: { name: string }) => t.name);
   assertEquals(names, ["get_me", "get_user", "get_post", "list_bookmarks", "refresh_bookmarks"]);
 });
+
+Deno.test("server: list_bookmarks sort=created orders by tweet created_at", async () => {
+  const store = new Store(":memory:");
+  store.upsertBookmark("me", "old", { id: "old", created_at: "2020-01-01T00:00:00Z" });
+  store.upsertBookmark("me", "new", { id: "new", created_at: "2024-01-01T00:00:00Z" });
+  const handler = makeHandler(store, rateLimitedClient());
+  const msg = await callTool(handler, "list_bookmarks", { sort: "created" });
+  const items = JSON.parse(msg?.result?.content?.[0]?.text ?? "[]") as { id: string }[];
+  assertEquals(items[0].id, "new");
+  assertEquals(items[1].id, "old");
+});

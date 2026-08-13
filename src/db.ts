@@ -145,14 +145,17 @@ export class Store {
   }
 
   /** List cached bookmark post jsons, newest first. */
-  bookmarks(limit = 25): unknown[] {
+  bookmarks(limit = 25, sort: "created" | "first_seen" = "first_seen"): unknown[] {
+    const orderBy = sort === "created"
+      ? "json_extract(p.json, '$.created_at') DESC"
+      : "b.first_seen_at DESC";
     const rows = this.db
       .prepare(
         `SELECT p.json AS json
          FROM bookmarks b
          JOIN posts p ON p.id = b.post_id
          WHERE b.deleted_at IS NULL AND p.deleted_at IS NULL
-         ORDER BY b.first_seen_at DESC
+         ORDER BY ${orderBy}
          LIMIT ?`,
       )
       .all(limit);

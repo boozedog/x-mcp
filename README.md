@@ -106,6 +106,11 @@ page all the way back and fill the corpus:
 x-mcp serve --backfill
 ```
 
+The poller requests a curated set of `tweet.fields` / `user.fields` (created_at,
+public_metrics, entities, author expansions, etc.) so the local corpus is rich.
+It uses `max_results=50` for reliable pagination. `list_bookmarks` can sort by
+`created` (the tweet's posting date) or `first_seen` (when x-mcp first saw it).
+
 ## MCP tools (v1)
 
 | Tool | Behavior |
@@ -113,7 +118,7 @@ x-mcp serve --backfill
 | `get_me` | Authenticated user; caches the user row |
 | `get_user` | By `id` or `username`; sqlite-first unless `fresh: true` |
 | `get_post` | By `id`; sqlite-first unless `fresh: true`; tombstones X-404s |
-| `list_bookmarks` | **SQL** over `bookmarks` ⨝ `posts`; no X call |
+| `list_bookmarks` | **SQL** over `bookmarks` ⨝ `posts`; no X call. `sort` = `created` (tweet date) or `first_seen` (default) |
 | `refresh_bookmarks` | Run one poller tick now |
 
 All tool argument schemas are **Effect v4** schemas exposed to the MCP SDK via
