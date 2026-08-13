@@ -49,7 +49,18 @@
               cp deno.json deno.lock $out/lib/
               cat > $out/bin/x-mcp <<EOF
               #!${pkgs.stdenv.shell}
-              export DENO_DIR=$out/lib/deno-cache
+              # DENO_DIR must be writable (Deno writes a V8 code cache there).
+              # Use a per-user cache dir, seeded from the read-only store cache.
+              CACHE_DIR="\$HOME/.cache/x-mcp"
+              if [ -n "\$XDG_CACHE_HOME" ]; then
+                CACHE_DIR="\$XDG_CACHE_HOME/x-mcp"
+              fi
+              mkdir -p "\$CACHE_DIR"
+              if [ ! -e "\$CACHE_DIR/.seeded" ]; then
+                cp -r $out/lib/deno-cache/. "\$CACHE_DIR/" 2>/dev/null || true
+                touch "\$CACHE_DIR/.seeded"
+              fi
+              export DENO_DIR="\$CACHE_DIR"
               exec ${deno}/bin/deno run --cached-only \
                 --allow-env --allow-read --allow-write --allow-net \
                 $out/lib/src/main.ts "\$@"
