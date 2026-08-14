@@ -202,8 +202,10 @@ export class XClient {
   ): Promise<GetBookmarksPage> {
     return this.gate((c) =>
       c.users.getBookmarks(userId, {
-        // Smaller pages: more reliable pagination (the max_results=100 early-stop
-        // bug) and smaller payloads now that we request rich fields.
+        // max_results=50, not the spec's 100: X Staff workaround for the
+        // bookmarks pagination bug (100 can stop pagination early and drop
+        // next_token). Smaller pages are also lighter now that we request rich
+        // fields. See issue #1 for the documented deviation.
         maxResults: 50,
         paginationToken,
         postFields: [...POST_FIELDS],

@@ -86,6 +86,7 @@ x-mcp refresh   # token health / force refresh (no secret values printed)
 
 `x-mcp serve` listens on `127.0.0.1:8788` by default:
 
+- `GET /` — token-free HTML status screen (desktop + mobile, auto-refreshes)
 - `POST /mcp` and `POST /mcp/` — Streamable HTTP MCP (`tools/list`, `tools/call`)
 - `GET /health` — token-free JSON status (auth presence, sqlite counts, last poll,
   rate-limit remaining/reset)
@@ -93,6 +94,13 @@ x-mcp refresh   # token health / force refresh (no secret values printed)
 It starts an in-process bookmark poller (`GET /2/users/{id}/bookmarks`, default
 folder only, no folder endpoints) sharing one refresh mutex and one rate-limit
 gate with the MCP tools.
+
+### Status screen
+
+`GET /` serves a dependency-free HTML page (inline CSS/JS, no frontend
+dependency) that renders the same token-free health data as `/health` and
+auto-refreshes every 15s. It is responsive for desktop and mobile. No access
+tokens, refresh tokens, or `auth.json` contents are ever exposed on the page.
 
 `serve` logs to stderr (token-free): HTTP requests, MCP tool calls, poller ticks,
 and token refreshes (structure only — never the tokens). Set `--log-level debug`
@@ -108,7 +116,8 @@ x-mcp serve --backfill
 
 The poller requests a curated set of `tweet.fields` / `user.fields` (created_at,
 public_metrics, entities, author expansions, etc.) so the local corpus is rich.
-It uses `max_results=50` for reliable pagination. `list_bookmarks` can sort by
+It uses `max_results=50` for reliable pagination (X Staff workaround: `100` can
+stop pagination early and drop `next_token`). `list_bookmarks` can sort by
 `created` (the tweet's posting date) or `first_seen` (when x-mcp first saw it).
 
 ## MCP tools (v1)

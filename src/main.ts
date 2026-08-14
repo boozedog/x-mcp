@@ -1,6 +1,8 @@
 /**
  * x-mcp CLI: login | serve | refresh
  */
+import { buildHttpHandler } from "./http.ts";
+import type { HealthData } from "./status.ts";
 import { loadAuth, saveAuth, authPath, publicAuth } from "./auth-store.ts";
 import { Store } from "./db.ts";
 import { XClient } from "./x-client.ts";
@@ -94,11 +96,11 @@ async function main(): Promise<void> {
 
   const handler = client ? makeHandler(store, client, log) : null;
 
-  const health = (): Response => {
+  const healthData = (): HealthData => {
     const now = Math.floor(Date.now() / 1000);
     // Re-read auth so in-process refresh is reflected in health (not a start snapshot).
     const liveAuth = client ? client.authSummary() : null;
-    return Response.json({
+    return {
       ok: !!client,
       has_auth_file: !!liveAuth,
       token_expired: liveAuth ? liveAuth.expires_at <= now : false,
@@ -108,22 +110,13 @@ async function main(): Promise<void> {
       last_poll_error: lastPollError,
       rate_limit_remaining: client?.rate.remaining ?? null,
       rate_limit_reset: client?.rate.reset ?? null,
-    });
+    };
   };
 
-  Deno.serve({ hostname: "127.0.0.1", port: opts.port }, async (req) => {
-    const url = new URL(req.url);
-    if (url.pathname === "/health") {
-      log.debug(`http ${req.method} ${url.pathname}`);
-      return health();
-    }
-    if ((url.pathname === "/mcp" || url.pathname === "/mcp/") && handler) {
-      log.info(`http ${req.method} ${url.pathname}`);
-      return handler.fetch(req);
-    }
-    log.warn(`http ${req.method} ${url.pathname} -> 404`);
-    return new Response("not found", { status: 404 });
-  });
+  Deno.serve(
+    { hostname: "127.0.0.1", port: opts.port },
+    buildHttpHandler({ log, mcpHandler: handler, getHealth: healthData }),
+  );
 
   // In-process bookmark poller (issue #1).
   if (client) {

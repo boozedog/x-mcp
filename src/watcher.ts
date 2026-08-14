@@ -7,7 +7,8 @@
  *
  * Polling rules:
  *   1. Backfill pages until overlap with a known id OR a per-tick page cap.
- *   2. Steady state: page 1 only, max_results=100. Stop if last id already known.
+ *   2. Steady state: page 1 only, max_results=50 (see x-client.ts for the
+ *      documented deviation from the spec's 100). Stop if last id already known.
  *   3. Gap: if page 1 is all new, keep paging until a known id or the cap.
  *   4. Interval is a flag (default 180s).
  *   5. Edges are append-only in v1; unbookmarks are ignored.
@@ -19,7 +20,6 @@ import type { Store } from "./db.ts";
 import type { XClient } from "./x-client.ts";
 
 const DEFAULT_PAGE_CAP = 10;
-const PAGE_SIZE = 100;
 
 export interface PollResult {
   fetched: number;
