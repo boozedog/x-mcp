@@ -18,6 +18,12 @@ in
       description = "Directory for auth.json and cache.sqlite (0700).";
     };
 
+    host = lib.mkOption {
+      type = lib.types.str;
+      default = "127.0.0.1";
+      description = "Address the MCP HTTP server binds to (loopback by default).";
+    };
+
     port = lib.mkOption {
       type = lib.types.port;
       default = 8788;
@@ -57,6 +63,8 @@ in
           "serve"
           "--state-dir"
           cfg.stateDir
+          "--host"
+          cfg.host
           "--port"
           (toString cfg.port)
           "--poll-interval"

@@ -63,6 +63,7 @@ x-mcp refresh   # token health / force refresh (no secret values printed)
 
 - `--state-dir <dir>` (default `$XDG_STATE_HOME/x-mcp` or `~/.local/state/x-mcp`)
 - `--client-id <id>` (or `X_CLIENT_ID`)
+- `--host <address>` (default `127.0.0.1`; or `X_MCP_HOST`) — address `serve` binds to
 - `--port <port>` (default `8788`)
 - `--poll-interval <sec>` (default `180`)
 - `--login-port <port>` (default `8789`)
@@ -84,7 +85,12 @@ x-mcp refresh   # token health / force refresh (no secret values printed)
 
 ## Serve
 
-`x-mcp serve` listens on `127.0.0.1:8788` by default:
+`x-mcp serve` listens on `127.0.0.1:8788` by default. Pass `--host <address>`
+(or set `X_MCP_HOST`) to bind to a different address, e.g. `0.0.0.0` or a
+specific Docker bridge address so a containerized LiteLLM can reach it via
+`host.docker.internal`. Loopback stays the default; the fleet restricts any
+non-loopback bind with host firewall policy rather than public ingress or
+Tailscale Serve.
 
 - `GET /` — token-free HTML status screen (desktop + mobile, auto-refreshes)
 - `POST /mcp` and `POST /mcp/` — Streamable HTTP MCP (`tools/list`, `tools/call`)
@@ -142,6 +148,7 @@ The flake ships `nixosModules.default` (`services.x-mcp`):
   services.x-mcp = {
     enable = true;
     clientId = "your-public-x-client-id"; # not a secret
+    host = "127.0.0.1"; # bind address; e.g. "0.0.0.0" for Docker-hosted LiteLLM
     port = 8788;
     pollInterval = 180;
   };
@@ -224,7 +231,10 @@ the login process is listening. On success it writes `auth.json` to
 port differs from the default `8789`, pass `--login-port <port>` to `x-mcp login`
 and forward that same port with `ssh -L <port>:127.0.0.1:<port> user@host`.
 
-To point LiteLLM at it (same host), use the loopback address:
+To point LiteLLM at it (same host), use the loopback address. For a Docker-hosted
+LiteLLM to reach the host service via `host.docker.internal`, set
+`services.x-mcp.host` to a non-loopback address (`0.0.0.0` or a specific Docker
+bridge address) and restrict it with host firewall policy:
 
 ```yaml
 mcp_servers:

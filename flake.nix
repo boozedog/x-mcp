@@ -122,7 +122,20 @@
               }
             ];
           };
+          # Non-loopback host: the Docker-hosted LiteLLM use case (issue #5).
+          nixosNonLoopback = nixpkgs.lib.nixosSystem {
+            inherit system;
+            modules = [
+              self.nixosModules.default
+              {
+                services.x-mcp.enable = true;
+                services.x-mcp.clientId = "test-client";
+                services.x-mcp.host = "0.0.0.0";
+              }
+            ];
+          };
           svc = nixos.config.systemd.services.x-mcp;
+          svcNonLoopback = nixosNonLoopback.config.systemd.services.x-mcp;
           assertions = [
             (assert svc.serviceConfig.CacheDirectory == "x-mcp";
               "CacheDirectory=x-mcp declared")
@@ -140,6 +153,10 @@
               "StateDirectoryMode=0700 preserved")
             (assert svc.serviceConfig.User == "x-mcp";
               "named dynamic user x-mcp")
+            (assert (builtins.match ".*--host 127\\.0\\.0\\.1.*" svc.serviceConfig.ExecStart) != null;
+              "ExecStart passes --host 127.0.0.1 by default")
+            (assert (builtins.match ".*--host 0\\.0\\.0\\.0.*" svcNonLoopback.serviceConfig.ExecStart) != null;
+              "ExecStart passes --host 0.0.0.0 when configured")
           ];
         in
         {

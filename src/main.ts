@@ -14,6 +14,7 @@ import { Logger, parseLogLevel } from "./logger.ts";
 interface Opts {
   stateDir: string;
   clientId: string;
+  host: string;
   port: number;
   pollIntervalSec: number;
   loginPort: number;
@@ -29,19 +30,23 @@ function defaultStateDir(): string {
   return `${home ?? "."}/.local/state/x-mcp`;
 }
 
-function parseArgs(): Opts {
+function parseArgs(
+  args: string[] = Deno.args,
+  env: Record<string, string | undefined> = Deno.env.toObject(),
+): Opts {
   const flag = (name: string): string | undefined => {
-    const i = Deno.args.indexOf(name);
-    return i >= 0 && i + 1 < Deno.args.length ? Deno.args[i + 1] : undefined;
+    const i = args.indexOf(name);
+    return i >= 0 && i + 1 < args.length ? args[i + 1] : undefined;
   };
   return {
-    stateDir: flag("--state-dir") ?? Deno.env.get("X_MCP_STATE_DIR") ?? defaultStateDir(),
-    clientId: flag("--client-id") ?? Deno.env.get("X_CLIENT_ID") ?? "",
-    port: Number(flag("--port") ?? Deno.env.get("X_MCP_PORT") ?? "8788"),
-    pollIntervalSec: Number(flag("--poll-interval") ?? Deno.env.get("X_MCP_POLL_INTERVAL") ?? "180"),
+    stateDir: flag("--state-dir") ?? env.X_MCP_STATE_DIR ?? defaultStateDir(),
+    clientId: flag("--client-id") ?? env.X_CLIENT_ID ?? "",
+    host: flag("--host") ?? env.X_MCP_HOST ?? "127.0.0.1",
+    port: Number(flag("--port") ?? env.X_MCP_PORT ?? "8788"),
+    pollIntervalSec: Number(flag("--poll-interval") ?? env.X_MCP_POLL_INTERVAL ?? "180"),
     loginPort: Number(flag("--login-port") ?? "8789"),
-    logLevel: flag("--log-level") ?? Deno.env.get("X_MCP_LOG_LEVEL") ?? "info",
-    backfill: Deno.args.includes("--backfill"),
+    logLevel: flag("--log-level") ?? env.X_MCP_LOG_LEVEL ?? "info",
+    backfill: args.includes("--backfill"),
     backfillPages: Number(flag("--backfill-pages") ?? "50"),
   };
 }
@@ -114,7 +119,7 @@ async function main(): Promise<void> {
   };
 
   Deno.serve(
-    { hostname: "127.0.0.1", port: opts.port },
+    { hostname: opts.host, port: opts.port },
     buildHttpHandler({ log, mcpHandler: handler, getHealth: healthData }),
   );
 
@@ -177,4 +182,8 @@ async function main(): Promise<void> {
   }
 }
 
-await main();
+if (import.meta.main) {
+  await main();
+}
+
+export { parseArgs };
