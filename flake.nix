@@ -50,10 +50,19 @@
               cat > $out/bin/x-mcp <<EOF
               #!${pkgs.stdenv.shell}
               # DENO_DIR must be writable (Deno writes a V8 code cache there).
-              # Use a per-user cache dir, seeded from the read-only store cache.
-              CACHE_DIR="\$HOME/.cache/x-mcp"
-              if [ -n "\$XDG_CACHE_HOME" ]; then
-                CACHE_DIR="\$XDG_CACHE_HOME/x-mcp"
+              # Prefer a systemd-managed writable cache directory when the unit
+              # declares CacheDirectory= (systemd sets \$CACHE_DIRECTORY). This is
+              # the reliable path under DynamicUser + ProtectSystem=strict.
+              # Otherwise fall back to a per-user cache dir for local/package use.
+              CACHE_DIR=""
+              if [ -n "\$CACHE_DIRECTORY" ]; then
+                CACHE_DIR="\$CACHE_DIRECTORY"
+              fi
+              if [ -z "\$CACHE_DIR" ]; then
+                CACHE_DIR="\$HOME/.cache/x-mcp"
+                if [ -n "\$XDG_CACHE_HOME" ]; then
+                  CACHE_DIR="\$XDG_CACHE_HOME/x-mcp"
+                fi
               fi
               mkdir -p "\$CACHE_DIR"
               if [ ! -e "\$CACHE_DIR/.seeded" ]; then
@@ -94,6 +103,54 @@
           default = pkgs.mkShell {
             packages = [ pkgs.deno pkgs.sqlite ];
           };
+        });
+
+      # Reproducible module evaluation: assert the hardened service declares a
+      # systemd-managed writable cache and that the packaged wrapper prefers
+      # $CACHE_DIRECTORY. Fails at evaluation time if any assertion is false.
+      checks = forAllSystems (system:
+        let
+          pkgs = nixpkgs.legacyPackages.${system};
+          pkg = self.packages.${system}.x-mcp;
+          nixos = nixpkgs.lib.nixosSystem {
+            inherit system;
+            modules = [
+              self.nixosModules.default
+              {
+                services.x-mcp.enable = true;
+                services.x-mcp.clientId = "test-client";
+              }
+            ];
+          };
+          svc = nixos.config.systemd.services.x-mcp;
+          assertions = [
+            (assert svc.serviceConfig.CacheDirectory == "x-mcp";
+              "CacheDirectory=x-mcp declared")
+            (assert svc.serviceConfig.CacheDirectoryMode == "0700";
+              "CacheDirectoryMode=0700 declared")
+            (assert svc.serviceConfig.DynamicUser == true;
+              "DynamicUser preserved")
+            (assert svc.serviceConfig.ProtectSystem == "strict";
+              "ProtectSystem=strict preserved")
+            (assert svc.serviceConfig.ProtectHome == true;
+              "ProtectHome preserved")
+            (assert svc.serviceConfig.StateDirectory == "x-mcp";
+              "StateDirectory=x-mcp preserved")
+            (assert svc.serviceConfig.StateDirectoryMode == "0700";
+              "StateDirectoryMode=0700 preserved")
+            (assert svc.serviceConfig.User == "x-mcp";
+              "named dynamic user x-mcp")
+          ];
+        in
+        {
+          module-eval = pkgs.runCommand "x-mcp-module-eval" { } ''
+            echo "module assertions passed: ${builtins.concatStringsSep ", " assertions}"
+            # The packaged wrapper must assign CACHE_DIR from the systemd-provided
+            # cache dir (match the assignment, not the explanatory comment).
+            grep -q 'CACHE_DIR="\$CACHE_DIRECTORY"' ${pkg}/bin/x-mcp
+            echo "wrapper assigns CACHE_DIR from \$CACHE_DIRECTORY"
+            touch $out
+          '';
         });
 
       # Wrap the self-contained module so `package` defaults to this flake's

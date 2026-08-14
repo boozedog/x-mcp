@@ -153,6 +153,77 @@ systemd unit (`DynamicUser`, `StateDirectory=0700`, `ProtectSystem=strict`).
 The package is built from a Nix-store path using `deno run --cached-only` with a
 pre-populated dependency cache.
 
+### Deno cache under the hardened unit
+
+Deno needs a **writable** directory for its runtime cache (`DENO_DIR`). Under
+`DynamicUser` + `ProtectSystem=strict` the per-user `$HOME/.cache` path is not
+writable, so the module declares a systemd-managed cache:
+
+```nix
+serviceConfig.CacheDirectory = "x-mcp";      # -> /var/cache/x-mcp
+serviceConfig.CacheDirectoryMode = "0700";
+```
+
+systemd creates `/var/cache/x-mcp` (owned by the service's dynamic user), makes
+it writable even under `ProtectSystem=strict`, and exports `$CACHE_DIRECTORY`
+for the process. The packaged wrapper prefers `$CACHE_DIRECTORY` when set and
+falls back to `$XDG_CACHE_HOME/x-mcp` / `$HOME/.cache/x-mcp` for local,
+non-systemd use. `auth.json` and `cache.sqlite` stay under `stateDir`
+(`/var/lib/x-mcp`, `0700`) as before.
+
+### Login as the service identity
+
+The service runs as a **named dynamic user** `x-mcp` (`User = "x-mcp"` +
+`DynamicUser = true`). With `DynamicUser`, systemd stores `stateDir` under
+`/var/lib/private/x-mcp` (bind-mounted to `/var/lib/x-mcp` only inside the
+service's namespace). To write `auth.json` there, run the login as a transient
+unit that requests the **same dynamic user name** — systemd keys dynamic users by
+name, so `User=x-mcp` + `DynamicUser=yes` shares the service's exact UID:
+
+```sh
+# Path to the packaged binary (bare `x-mcp` is not on PATH).
+BIN=$(systemctl cat x-mcp | awk '/^ExecStart=/ { sub(/^ExecStart=/, ""); print $1; exit }')
+
+# Run the one-shot PKCE login as the service's dynamic user, in the same sandbox.
+sudo systemd-run --pty --wait \
+  --property=DynamicUser=yes \
+  --property=User=x-mcp \
+  --property=StateDirectory=x-mcp \
+  --property=CacheDirectory=x-mcp \
+  --property=ProtectSystem=strict \
+  --property=ProtectHome=true \
+  -- "$BIN" login --state-dir /var/lib/x-mcp --client-id <your-public-client-id>
+```
+
+It prints the authorize URL and binds `http://127.0.0.1:8789/callback`.
+
+> Why `User=x-mcp` + `DynamicUser=yes`? systemd's `dynamic_user_acquire()` keys
+> dynamic users by **name**, so any unit requesting the same name shares the
+> service's UID and lock. Two failure modes to avoid: a bare `--uid=<numeric>`
+> does not share that object (systemd treats it as a plain UID and migrates the
+> private state dir to the public path), and a bare `DynamicUser=yes` without
+> `User=x-mcp` allocates a *different* dynamic user that chowns the state dir away
+> from the service. `User=x-mcp` + `DynamicUser=yes` is a named dynamic user, not
+> a static user, so it does not weaken `DynamicUser`.
+
+#### SSH loopback callback (remote host)
+
+On a remote NixOS host, forward the callback port to your laptop so the browser
+redirect lands on the host's loopback:
+
+```sh
+# From your laptop, before running the login on the host:
+ssh -L 8789:127.0.0.1:8789 user@host
+```
+
+Then run the `systemd-run` login command above on the host. Open the printed
+authorize URL in your **local** browser; X redirects to
+`http://127.0.0.1:8789/callback`, which SSH forwards to the host's loopback where
+the login process is listening. On success it writes `auth.json` to
+`/var/lib/x-mcp` and the service picks it up on its next restart. If the login
+port differs from the default `8789`, pass `--login-port <port>` to `x-mcp login`
+and forward that same port with `ssh -L <port>:127.0.0.1:<port> user@host`.
+
 To point LiteLLM at it (same host), use the loopback address:
 
 ```yaml

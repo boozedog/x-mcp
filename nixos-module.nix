@@ -70,6 +70,15 @@ in
         RestartSec = "5s";
         StateDirectory = "x-mcp";
         StateDirectoryMode = "0700";
+        # systemd-managed writable Deno cache. systemd creates /var/cache/x-mcp
+        # (owned by the DynamicUser), makes it writable even under
+        # ProtectSystem=strict, and exports \$CACHE_DIRECTORY for the wrapper.
+        CacheDirectory = "x-mcp";
+        CacheDirectoryMode = "0700";
+        # Named dynamic user: the service and any transient login unit that also
+        # requests User=x-mcp + DynamicUser=yes share the same dynamic UID (systemd
+        # keys dynamic users by name). This does NOT weaken DynamicUser.
+        User = "x-mcp";
         DynamicUser = true;
         NoNewPrivileges = true;
         ProtectSystem = "strict";
