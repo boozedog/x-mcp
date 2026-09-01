@@ -19,17 +19,30 @@
 
           # Fixed-output derivation: populate the Deno module cache from deno.lock.
           # This is the only step that needs network access.
+          #
+          # Keep only lockfile-defined module trees (npm/, deps/). Deno also
+          # writes gen/ and analysis sqlite DBs that change with the toolchain;
+          # hashing those breaks this FOD when a consumer follows a different
+          # nixpkgs (issue #7). Runtime already copies DENO_DIR to a writable
+          # cache and regenerates those files.
           denoCache = pkgs.stdenv.mkDerivation {
             pname = "x-mcp-deno-cache";
             version = "1.0.0";
             src = ./.;
             nativeBuildInputs = [ deno ];
             buildPhase = ''
-              export DENO_DIR=$out
+              export DENO_DIR=$(mktemp -d)
               deno cache --lock=deno.lock src/main.ts
+              mkdir -p $out
+              for tree in npm deps; do
+                if [ -d "$DENO_DIR/$tree" ]; then
+                  cp -a "$DENO_DIR/$tree" "$out/"
+                fi
+              done
+              test -d "$out/npm"
             '';
             installPhase = "true";
-            outputHash = "sha256-nIib/EDGFron4MOGErkVKfvBQRXwnDBRflt0PYiIYW4=";
+            outputHash = "sha256-C57QQqTdYnfd24pS9/9iYqqYUDFEOAgj2eUTGwYhrbk=";
             outputHashAlgo = "sha256";
             outputHashMode = "recursive";
           };
@@ -178,7 +191,7 @@
         in
         {
           imports = [ base ];
-          services.x-mcp.package = lib.mkDefault self.packages.${pkgs.system}.x-mcp;
+          services.x-mcp.package = lib.mkDefault self.packages.${pkgs.stdenv.hostPlatform.system}.x-mcp;
         };
     };
 }
